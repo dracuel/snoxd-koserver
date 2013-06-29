@@ -81,6 +81,7 @@ void CUser::Initialize()
 	m_sMerchantsSocketID = -1;
 	m_sChallengeUser = -1;
 	m_sPartyIndex = -1;		
+	m_nPartyBBSUnk = 0;
 	m_sExchangeUser = -1;
 	m_bRequestingChallenge = 0;
 	m_bChallengeRequested = 0;

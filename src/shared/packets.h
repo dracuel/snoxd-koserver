@@ -477,11 +477,17 @@ enum
 ////////////////////////////////////////////////////////////////
 // Party BBS subpacket define
 ////////////////////////////////////////////////////////////////
-#define PARTY_BBS_REGISTER		0x01
-#define PARTY_BBS_DELETE		0x02
-#define PARTY_BBS_NEEDED		0x03
-#define PARTY_BBS_WANTED		0x04
-#define PARTY_BBS_LIST			0x0B
+#define PARTY_BBS_REGISTER		1
+#define PARTY_BBS_DELETE		2
+#define PARTY_BBS_NEEDED		3
+#define PARTY_BBS_WANTED		4
+#define PARTY_BBS_REGISTER2		5 // unknown
+#define PARTY_BBS_DELETE2		6 // unknown
+#define PARTY_BBS_WANTED2		7 // unknown
+#define PARTY_BBS_REQUEST		8
+#define PARTY_BBS_REJECT		9
+#define PARTY_BBS_INSERT		10
+#define PARTY_BBS_LIST			11
 
 ////////////////////////////////////////////////////////////////
 // Market BBS primary subpacket define

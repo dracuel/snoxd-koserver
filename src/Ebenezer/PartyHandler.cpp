@@ -421,60 +421,99 @@ void CUser::PartyBBS(Packet & pkt)
 	switch (opcode)
 	{
 		case PARTY_BBS_REGISTER:
-			PartyBBSRegister(pkt);
-			break;
-		case PARTY_BBS_DELETE:
-			PartyBBSDelete(pkt);
-			break;
-		case PARTY_BBS_NEEDED:
-			PartyBBSNeeded(pkt, PARTY_BBS_NEEDED);
-			break;
 		case PARTY_BBS_WANTED:
-			PartyBBSWanted(pkt);
+			printf("PartyBBSRegister: %d\n", opcode);
+			PartyBBSRegister(pkt, opcode);
 			break;
-		case PARTY_BBS_LIST:
-			SendPartyBBSNeeded(0, PARTY_BBS_LIST);
+
+		case PARTY_BBS_DELETE:
+		case PARTY_BBS_DELETE2:
+			printf("PartyBBSDelete: %d\n", opcode);
+			PartyBBSDelete(pkt, opcode);
+			break;
+
+		case PARTY_BBS_NEEDED:
+			printf("PartyBBSNeeded: %d\n", opcode);
+			PartyBBSNeeded(pkt, opcode);
+			break;
+
+		case PARTY_BBS_WANTED2:
+			printf("PartyBBSWanted: %d\n", opcode);
+			PartyBBSWanted(pkt, opcode);
+			break;
+
+		case PARTY_BBS_REQUEST:
+			printf("PartyBBSRequest: %d\n", opcode);
+			// PartyBBSRequest(pkt);
+			break;
+
+		case PARTY_BBS_REJECT:
+			printf("PartyBBSReject: %d\n", opcode);
+			// PartyBBSReject(pkt);
+			break;
+
+		case PARTY_BBS_INSERT:
+			printf("PartyBBSInsert: %d\n", opcode);
+			// PartyBBSInsert(pkt);
 			break;
 	}
 }
 
-void CUser::PartyBBSRegister(Packet & pkt)
+void CUser::PartyBBSRegister(Packet & pkt, uint8 opcode)
 {
-	int counter = 0;
+	Packet result(WIZ_PARTY_BBS), emptyPacket;
+	_PARTY_GROUP * pParty = nullptr;
 
-	if (isInParty() // You are already in a party!
-		|| m_bNeedParty == 2) // You are already on the BBS!
+	// If we're in a party which doesn't exist...
+	if (isInParty() 
+		&& (pParty = g_pMain->m_PartyArray.GetData(GetPartyID())) == nullptr)
+		goto fail_return;
+
+	switch (opcode)
 	{
-		Packet result(WIZ_PARTY_BBS, uint8(PARTY_BBS_REGISTER));
-		result << uint8(0);
-		Send(&result);
-		return;
+	case PARTY_BBS_REGISTER:
+		// If we're registering our party, but we're not a party leader...
+		if (!isPartyLeader()
+			// If we're already registered as seeking a party...
+			|| m_bNeedParty != 1)
+			goto fail_return;
+
+		StateChangeServerDirect(2, 2); // seeking a party
+		SendPartyBBSNeeded(0, opcode);
+		break;
+
+	case PARTY_BBS_WANTED:
+		// If we're not in a party and sending looking for party members...
+		if (!isInParty())
+			goto fail_return;
+
+	/* NOTE: PARTY_BBS_WANTED deliberately falls through */
+	case PARTY_BBS_REGISTER2:
+		if (opcode == PARTY_BBS_REGISTER2
+			&& m_bNeedParty != 3)
+			goto fail_return;
+
+		m_bNeedParty = 3;
+
+		pkt >> m_nPartyBBSUnk >> pParty->WantedMessage;
+		if (pParty->WantedMessage.length() > 40)
+		{
+			pParty->WantedMessage.clear();
+			goto fail_return;
+		}
+
+		emptyPacket << uint16(0);
+		PartyBBSWanted(emptyPacket, opcode);
+		break;
 	}
+	return;
 
-	StateChangeServerDirect(2, 2); // seeking a party
-
-	// TO-DO: Make this a more localised map
-	SessionMap & sessMap = g_pMain->m_socketMgr.GetActiveSessionMap();
-	foreach (itr, sessMap)
-	{
-		CUser *pUser = TO_USER(itr->second);
-		if (pUser->GetNation() != GetNation()
-			|| pUser->m_bNeedParty == 1) 
-			continue;
-
-		if( !(   ( pUser->GetLevel() <= (int)(GetLevel() * 1.5) && pUser->GetLevel() >= (int)(GetLevel() * 1.5)) 
-			  || ( pUser->GetLevel() <= (GetLevel() + 8) && pUser->GetLevel() >= ((int)(GetLevel()) - 8))))
-			  continue;
-
-		if (pUser->GetSocketID() == GetSocketID()) break;
-		counter++;		
-	}
-	g_pMain->m_socketMgr.ReleaseLock();
-
-	SendPartyBBSNeeded(counter / MAX_BBS_PAGE, PARTY_BBS_LIST);
+fail_return:
+	result << opcode << uint8(0);
+	Send(&result);
 }
 
-void CUser::PartyBBSDelete(Packet & pkt)
+void CUser::PartyBBSDelete(Packet & pkt, uint8 opcode)
 {
 	// You don't need anymore 
 	if (m_bNeedParty == 1) 
@@ -489,29 +528,27 @@ void CUser::PartyBBSDelete(Packet & pkt)
 	SendPartyBBSNeeded(0, PARTY_BBS_DELETE);
 }
 
-void CUser::PartyBBSNeeded(Packet & pkt, uint8 type)
+void CUser::PartyBBSNeeded(Packet & pkt, uint8 opcode)
 {
-	SendPartyBBSNeeded(pkt.read<uint16>(), type);
+	SendPartyBBSNeeded(pkt.read<uint16>(), opcode);
 }
 
-void CUser::SendPartyBBSNeeded(uint16 page_index, uint8 bType)
+void CUser::SendPartyBBSNeeded(uint16 page_index, uint8 opcode)
 {
 	Packet result(WIZ_PARTY_BBS);
 
 	uint16 start_counter = 0, BBS_Counter = 0;
 	uint8 valid_counter = 0;
-	int j = 0;
-	
-	start_counter = page_index * MAX_BBS_PAGE;
 
+	start_counter = page_index * MAX_BBS_PAGE;
 	if (start_counter >= MAX_USER)
 	{
-		result << uint8(PARTY_BBS_NEEDED) << uint8(0);
+		result << opcode << uint8(0);
 		Send(&result);
 		return;
 	}
 
-	result << bType << uint8(1) << page_index << uint8(0) << uint8(0); //Not sure what the last 2 bytes are.
+	result << opcode << uint8(1) << page_index << uint8(0) << uint8(0); //Not sure what the last 2 bytes are.
 
 	// TO-DO: Make this a more localised map
 	SessionMap & sessMap = g_pMain->m_socketMgr.GetActiveSessionMap();
@@ -519,15 +556,20 @@ void CUser::SendPartyBBSNeeded(uint16 page_index, uint8 bType)
 	foreach (itr, sessMap)
 	{
 		CUser *pUser = TO_USER(itr->second);
-		_PARTY_GROUP *pParty = nullptr;
-		string WantedMessage = "";
-		uint8 PartyMembers = 0;
-		uint16 sClass = pUser->m_sClass;
 		i++;
 
-		if ((GetNation() != pUser->GetNation() && GetZoneID() != 21 && GetZoneID() != 55 && GetZoneID() != pUser->GetZoneID())
-			|| (pUser->m_bNeedParty == 1 && !pUser->m_bPartyLeader)
-			|| !(  ( pUser->GetLevel() <= (int)(GetLevel() * 1.5) && pUser->GetLevel() >= (int)(GetLevel() * 1.5)) 
+		// Players must be in the same zone
+		if (GetZoneID() != pUser->GetZoneID()
+			// and, unless it's a neutral zone where they can trade (e.g. Moradon), they must be the same nation.
+			|| GetNation() != pUser->GetNation() && !GetMap()->canTradeWithOtherNation())
+			continue;
+
+		// Is this player currently seeking a party to join? (I assume...)
+		if (pUser->m_bNeedParty != 3)
+			continue;
+
+		// Ensure this player is in our level range.
+		if (!(  ( pUser->GetLevel() <= (int)(GetLevel() * 1.5) && pUser->GetLevel() >= (int)(GetLevel() * 1.5)) 
 				|| ( pUser->GetLevel() <= (GetLevel() + 8) && pUser->GetLevel() >= ((int)(GetLevel()) - 8))))
 			  continue;
 
@@ -537,26 +579,10 @@ void CUser::SendPartyBBSNeeded(uint16 page_index, uint8 bType)
 			|| valid_counter >= MAX_BBS_PAGE)
 			continue;
 
-		if (m_bPartyLeader)
-		{
-			pParty = g_pMain->m_PartyArray.GetData( m_sPartyIndex );
-			if (pParty == nullptr) //Shouldn't be hit.
-				return;
-			WantedMessage = pParty->WantedMessage;
-			PartyMembers = GetPartyMemberAmount();
-			sClass = pParty->sWantedClass;
-		}
-
-		result.DByte();
 		result	<< pUser->GetName()
-				<< sClass
-				<< uint16(0) << pUser->GetLevel() //Not sure what that uint16 does.
-				<< uint8(pUser->m_bPartyLeader ? 3 : 2); //2 is player, 3 is party leader
-		result.SByte();
-		result	<< WantedMessage
-				<< pUser->GetZoneID()
-				<< PartyMembers
-				<< uint8(0);
+				<< pUser->m_nPartyBBSUnk
+				<< pUser->GetLevel();
+
 		valid_counter++;
 	}
 	g_pMain->m_socketMgr.ReleaseLock();
@@ -565,29 +591,39 @@ void CUser::SendPartyBBSNeeded(uint16 page_index, uint8 bType)
 	if (valid_counter < MAX_BBS_PAGE)
 	{
 		for (int j = valid_counter; j < MAX_BBS_PAGE; j++)
-			result	<< uint16(0) << uint16(0)
-					<< uint16(0) << uint8(0)
-					<< uint8(0) << uint8(0)
-					<< uint16(0)
-					<< uint8(0);
+			result << uint16(0) << uint32(0) << uint8(0);
 	}
 
 	result << page_index << BBS_Counter;
+
+	if (opcode == PARTY_BBS_WANTED 
+		|| opcode == PARTY_BBS_REGISTER2)
+	{
+		_PARTY_GROUP * pParty = g_pMain->m_PartyArray.GetData(GetPartyID());
+		if (pParty == nullptr)
+			return;
+
+		result << m_nPartyBBSUnk << pParty->WantedMessage;
+	}
+
 	Send(&result);
 }
 
-void CUser::PartyBBSWanted(Packet & pkt)
+void CUser::PartyBBSWanted(Packet & pkt, uint8 opcode)
 {
 	uint16 page_index = 0;
 	if (!isPartyLeader())
 		return;
 
-	_PARTY_GROUP *pParty = g_pMain->m_PartyArray.GetData( m_sPartyIndex );
+	_PARTY_GROUP *pParty = g_pMain->m_PartyArray.GetData(GetPartyID());
 	if (pParty == nullptr)
 		return;
 
-	pkt >> pParty->sWantedClass >> page_index >> pParty->WantedMessage;
-	SendPartyBBSNeeded(page_index, PARTY_BBS_WANTED);
+	pkt >> pParty->nWantedClass >> page_index >> pParty->WantedMessage;
+	if (pParty->WantedMessage.length() > 40)
+		pParty->WantedMessage.clear();
+
+	SendPartyBBSNeeded(page_index, opcode);
 }
 
 uint8 CUser::GetPartyMemberAmount()

@@ -242,7 +242,7 @@ struct	_PARTY_GROUP
 #ifdef EBENEZER
 	uint8	bItemRouting;
 	std::string	WantedMessage;
-	uint16	sWantedClass;
+	uint32	nWantedClass;
 #endif
 
 	_PARTY_GROUP()

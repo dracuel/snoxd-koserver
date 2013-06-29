@@ -194,6 +194,8 @@ public:
 	bool	m_bInParty;
 	bool	m_bPartyLeader;
 
+	uint32	m_nPartyBBSUnk;
+
 	bool	m_bCanSeeStealth;
 	uint8	m_bInvisibilityType;
 
@@ -650,10 +652,10 @@ public:
 	void ServerChangeOk(Packet & pkt);
 
 	void PartyBBS(Packet & pkt);
-	void PartyBBSRegister(Packet & pkt);
-	void PartyBBSDelete(Packet & pkt);
-	void PartyBBSNeeded(Packet & pkt, uint8 type);
-	void PartyBBSWanted(Packet & pkt);
+	void PartyBBSRegister(Packet & pkt, uint8 opcode);
+	void PartyBBSDelete(Packet & pkt, uint8 opcode);
+	void PartyBBSNeeded(Packet & pkt, uint8 opcode);
+	void PartyBBSWanted(Packet & pkt, uint8 opcode);
 	uint8 GetPartyMemberAmount();
 
 	void SendPartyBBSNeeded(uint16 page_index, uint8 bType);
